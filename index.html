@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light only">
+<title>ANOVA step by step: age, condition, interaction</title>
+<style>
+  html, body { background: #FFFFFF; color: #1F1E1D; margin: 0; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 880px; margin: 0 auto; padding: 28px 24px; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0 0 4px; }
+  .sub { font-size: 14px; color: #5F5E5A; margin: 0 0 14px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  button { font: inherit; font-size: 14px; background: #FFFFFF; color: #1F1E1D; border: 1px solid #C9C7BE; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  button:hover { background: #F5F4F0; }
+  button.on { border-color: #1F1E1D; background: #F1EFE8; }
+  .tabs { border-bottom: 1px solid #E6E4DD; padding-bottom: 14px; margin-bottom: 18px; }
+  .tabs button.on { background: #1F1E1D; color: #FFFFFF; border-color: #1F1E1D; }
+  table { border-collapse: collapse; font-size: 14px; margin: 0 0 14px; }
+  th, td { padding: 5px 14px; text-align: right; border-bottom: 1px solid #E6E4DD; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #5F5E5A; font-weight: 500; border-bottom: 1.5px solid #1F1E1D; }
+  tr.hl td { background: #FAEEDA; font-weight: 500; }
+  td.cellhl { outline: 2px solid #A32D2D; outline-offset: -2px; }
+  .legend { display: flex; gap: 16px; font-size: 13px; color: #5F5E5A; margin: 4px 0 0; }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  svg { display: block; width: 100%; height: auto; }
+  #ann { transition: opacity 0.35s; }
+  #cap { font-size: 15px; line-height: 1.6; color: #3D3D3A; margin: 10px 0 0; min-height: 4.8em; }
+  .hint { font-size: 12px; color: #888780; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="btns tabs" id="tabs"></div>
+<h1 id="title"></h1>
+<p class="sub" id="sub"></p>
+
+<table id="tbl">
+  <tr><th>Source</th><th>df</th><th>SS</th><th>MS</th><th>F</th></tr>
+  <tr data-row="age"><td>Age</td><td>1</td><td data-col="ss">240.25</td><td data-col="ms">240.25</td><td data-col="f">29.94</td></tr>
+  <tr data-row="cond"><td>Condition</td><td>4</td><td data-col="ss">1514.94</td><td data-col="ms">378.74</td><td data-col="f">47.19</td></tr>
+  <tr data-row="int"><td>Age × Condition</td><td>4</td><td data-col="ss">190.30</td><td data-col="ms">47.58</td><td data-col="f">5.93</td></tr>
+  <tr data-row="err"><td>Error</td><td>90</td><td data-col="ss">722.30</td><td data-col="ms">8.03</td><td></td></tr>
+  <tr data-row="tot"><td>Total</td><td>99</td><td data-col="ss">2667.79</td><td></td><td></td></tr>
+</table>
+
+<div class="btns" id="steps"></div>
+<div class="legend">
+  <span><span class="sw" style="background:#444441"></span>older</span>
+  <span><span class="sw" style="background:#C9C6BC"></span>younger</span>
+</div>
+
+<svg id="svg" viewBox="0 0 820 430" role="img" aria-label="Animated bar chart showing how each ANOVA effect is computed from the cell means">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#A32D2D"/>
+    </marker>
+  </defs>
+  <g id="axis"></g>
+  <g id="bars"></g>
+  <g id="ann"></g>
+  <text id="ylab" x="16" y="185" transform="rotate(-90 16 185)" text-anchor="middle" font-size="13" fill="#5F5E5A"></text>
+</svg>
+
+<p id="cap"></p>
+<p class="hint">Tip: the left and right arrow keys step through all five demos in order.</p>
+
+<script>
+// ---------- data ----------
+const M = [[7.0, 6.9, 11.0, 13.4, 12.0],      // older
+           [6.5, 7.6, 14.8, 17.6, 19.3]];     // younger
+const CN = ['counting', 'rhyming', 'adjective', 'imagery', 'intentional'];
+const N = 10;
+// raw recall scores, 10 per cell (sorted within each cell for readability)
+const RAW = [
+  [[9,8,6,8,10,4,6,5,7,7],[7,9,6,6,6,11,6,3,8,7],[11,13,8,6,14,11,13,13,10,11],[12,11,16,11,9,23,12,10,19,11],[10,19,14,5,10,11,14,15,11,11]],
+  [[8,6,4,6,7,6,5,7,9,7],[10,7,8,10,4,7,10,6,7,7],[14,11,18,14,13,22,17,16,12,11],[20,16,16,15,18,16,20,22,14,19],[21,19,17,15,22,16,22,22,18,21]]
+].map(r => r.map(c => c.slice().sort((x, y) => x - y)));
+const GM = (M[0].concat(M[1])).reduce((s, v) => s + v, 0) / 10;
+const AM = M.map(r => r.reduce((s, v) => s + v, 0) / 5);
+const CM = CN.map((_, c) => (M[0][c] + M[1][c]) / 2);
+const AE = AM.map(v => v - GM);
+const CE = CM.map(v => v - GM);
+const IE = (a, c) => M[a][c] - AM[a] - CM[c] + GM;
+const MSE = 722.30 / 90;
+
+const P = [];                                  // 100 participants
+for (let a = 0; a < 2; a++) for (let c = 0; c < 5; c++) for (let k = 0; k < N; k++) P.push({ a, c, k });
+const pid = (a, c, k) => a * 50 + c * 10 + k;
+const cellIds = (a, c) => Array.from({ length: N }, (_, k) => pid(a, c, k));
+const FILL = ['#444441', '#C9C6BC'];
+
+// ---------- geometry ----------
+const W = 820, PL = 64, PR = 20, PT = 20, PH = 330, PW = W - PL - PR, PB = PT + PH;
+const f2 = v => Math.abs(v).toFixed(2);
+const sg = v => (v < 0 ? '−' : '+') + f2(v);
+
+function layout(clusters, gw, gGap, cGap, inner) {
+  const total = clusters.reduce((s, cl) => s + cl.length * gw + (cl.length - 1) * gGap, 0) + (clusters.length - 1) * cGap;
+  let x = PL + (PW - total) / 2;
+  const pos = new Array(100), gc = [], cc = [];
+  clusters.forEach(cl => {
+    const start = x;
+    cl.forEach((g, gi) => {
+      const bw = (gw - (g.length - 1) * inner) / g.length;
+      g.forEach((p, j) => { pos[p] = { x: x + j * (bw + inner), w: inner ? bw : bw + 1.0, b: 0 }; });
+      gc.push(x + gw / 2);
+      x += gw + (gi < cl.length - 1 ? gGap : 0);
+    });
+    cc.push((start + x) / 2);
+    x += cGap;
+  });
+  return { pos, gc, cc };
+}
+
+const CELLS = CN.map((_, c) => [cellIds(0, c), cellIds(1, c)]);
+const AGE2  = [0, 1].map(a => [[].concat(...CN.map((_, c) => cellIds(a, c)))]);
+const COND5 = CN.map((_, c) => [cellIds(0, c).concat(cellIds(1, c))]);
+
+const L = {
+  cells:   () => layout(CELLS, 56, 4, 36, 0),
+  age2:    () => layout(AGE2, 150, 0, 90, 0),
+  cond5:   () => layout(COND5, 80, 0, 50, 0),
+  pAge:    () => layout(AGE2, 330, 0, 40, 1.2),
+  pCond:   () => layout(COND5, 132, 0, 18, 1.2),
+  pInt:    () => layout(CELLS, 62, 6, 18, 1.2),
+};
+const COLX = PL + PW * 0.36 - 55, COLW = 110;
+
+function stack(order, vals) {
+  const pos = new Array(100); let base = 0;
+  order.forEach(p => { pos[p] = { x: COLX, w: COLW, b: base }; base += vals[p]; });
+  return { pos, total: base };
+}
+const ORD_AGE = P.map((_, i) => i);
+const ORD_COND = [].concat(...CN.map((_, c) => cellIds(0, c).concat(cellIds(1, c))));
+
+// ---------- annotation helpers (y is the final-domain mapper) ----------
+const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" text-anchor="${o.a || 'middle'}" font-size="${o.fs || 13}" fill="${o.fill || '#3D3D3A'}" font-weight="${o.fw || 400}">${s}</text>`;
+const catLabels = (xs, names) => xs.map((x, i) => T(x, PB + 32, names[i], { fill: '#5F5E5A' })).join('');
+const gmLine = y => `<line x1="${PL}" x2="${W - PR}" y1="${y(GM)}" y2="${y(GM)}" stroke="#A32D2D" stroke-width="2" stroke-dasharray="6 4"/>` +
+  T(W - PR - 4, y(GM) - 8, 'grand mean = ' + GM.toFixed(2), { a: 'end', fill: '#A32D2D' });
+function pointers(y, xs, vals, names) {
+  return xs.map((x, i) => {
+    const v = vals[i], tip = y(v), dir = v < 0 ? 1 : -1;
+    const y1 = tip + dir * 24, y2 = tip + dir * 5;
+    return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#A32D2D" stroke-width="1.5" marker-end="url(#arr)"/>` +
+      T(x, y1 + (dir > 0 ? 15 : -6), (names ? names[i] + ': ' : '') + sg(v), { fill: '#A32D2D', fw: 500 });
+  }).join('');
+}
+const note = (lines) => lines.map((s, i) => T(PL + 12, PT + 18 + i * 18, s, { a: 'start', fill: '#A32D2D', fw: 500 })).join('');
+function msAnn(y, ss, df, name) {
+  const ms = ss / df, ex = COLX + COLW + 70;
+  return `<rect x="${COLX}" y="${y(ss)}" width="${COLW}" height="${y(0) - y(ss)}" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-dasharray="5 4"/>` +
+    T(COLX + COLW / 2, y(ss) - 8, 'SS = ' + ss.toFixed(2), { fill: '#5F5E5A' }) +
+    (df > 1 ? T(COLX + COLW / 2, y(ms) - 8, 'MS = ' + ms.toFixed(2), { fw: 500 }) : '') +
+    T(COLX - 14, y(ms / 2) + 4, `÷ ${df} →`, { a: 'end', fw: 500 }) +
+    `<rect x="${ex}" y="${y(MSE)}" width="56" height="${Math.max(1.5, y(0) - y(MSE))}" fill="#888780"/>` +
+    T(ex + 28, y(MSE) - 8, 'MS.error = 8.03', { fill: '#5F5E5A' }) +
+    T(ex + 90, PT + 60, `F = MS.${name} / MS.error`, { a: 'start', fw: 500 }) +
+    T(ex + 90, PT + 82, `= ${ms.toFixed(2)} / 8.03 = ${(ms / MSE).toFixed(2)}`, { a: 'start', fw: 500 }) +
+    T(ex + 90, PT + 104, `df = ${df}, so MS = SS / ${df}`, { a: 'start', fill: '#5F5E5A' }) +
+    T(COLX + COLW / 2, PB + 24, 'all 100 participants', { fill: '#5F5E5A' }) +
+    T(ex + 28, PB + 24, 'error', { fill: '#5F5E5A' });
+}
+
+const cellMeanLines = (y, g) => g.gc.map((x, i) => { const a = i % 2, c = (i - a) / 2;
+  return `<line x1="${x - 33}" x2="${x + 33}" y1="${y(M[a][c])}" y2="${y(M[a][c])}" stroke="#A32D2D" stroke-width="2.5"/>`; }).join('');
+const stackLab = (y, g, name, lines) => T(COLX + COLW / 2, y(g.total) - 10, name + ' = ' + g.total.toFixed(2), { fw: 500 }) +
+  T(COLX + COLW / 2, PB + 32, 'all 100 participants', { fill: '#5F5E5A' }) +
+  lines.map((t, i) => T(COLX + COLW + 40, PT + 60 + i * 22, t, { a: 'start' })).join('');
+function partition(y) {
+  const parts = [['Error', 722.30, 90, '#888780'], ['Age × Condition', 190.30, 4, '#D85A30'], ['Condition', 1514.94, 4, '#1D9E75'], ['Age', 240.25, 1, '#7F77DD']];
+  const x = COLX + COLW + 70; let base = 0, h = '';
+  parts.forEach(([n, ss, df, col]) => {
+    const top = y(base + ss), bot = y(base);
+    h += `<rect x="${x}" y="${top}" width="${COLW}" height="${bot - top}" fill="${col}" stroke="#FFFFFF" stroke-width="1"/>`;
+    h += T(x + COLW + 12, (top + bot) / 2 + 5, `${n}: SS = ${ss.toFixed(2)}, df = ${df}`, { a: 'start', fw: 500 });
+    base += ss;
+  });
+  return h + T(COLX + COLW / 2, y(2667.79) - 10, 'SS.total = 2667.79', { fw: 500 }) +
+    T(COLX + COLW + 35, y(1300) + 5, '=', { fs: 22, fw: 500 }) +
+    T(COLX + COLW / 2, PB + 32, 'all 100 participants', { fill: '#5F5E5A' }) +
+    T(x + COLW / 2, PB + 32, 'the four rows above Total', { fill: '#5F5E5A' });
+}
+
+// ---------- steps ----------
+const S = p => RAW[P[p].a][P[p].c][P[p].k];
+const errV = p => S(p) - M[P[p].a][P[p].c], totV = p => S(p) - GM;
+const ageV = p => AE[P[p].a], condV = p => CE[P[p].c], intV = p => IE(P[p].a, P[p].c);
+const sq = f => p => f(p) * f(p);
+const SSf = f => P.reduce((s, _, p) => s + f(p) * f(p), 0);
+const MEANS = [-10, 25];
+
+function cellsStep(val, cap, extra) {
+  return { L: 'cells', val, dom: MEANS, ylab: 'recall', cap,
+    ann: (y, g) => catLabels(g.cc, CN) + (extra ? extra(y, g) : '') };
+}
+
+const D = [
+ { title: 'Demo 1: the main effect of age', row: 'age',
+   sub: 'Collapse across condition, subtract the grand mean, then build SS and MS for age.',
+   steps: [
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c], 'The full ANOVA table. This demo builds the highlighted row, the main effect of age, starting from the 10 cell means below (n = 10 per cell).'), { name: '1. ANOVA table' }),
+    { name: '2. Collapse across condition', L: 'age2', val: p => AM[P[p].a], dom: MEANS, ylab: 'recall',
+      ann: (y, g) => catLabels(g.cc, ['older', 'younger']) + gmLine(y) + g.cc.map((x, i) => T(x, y(AM[i]) - 8, AM[i].toFixed(2), { fw: 500 })).join(''),
+      cap: 'Collapse across condition: average each age group over all five conditions (50 people per bar). Older = 10.06, younger = 13.16. The dashed line is the grand mean, 11.61.' },
+    { name: '3. − grand mean', L: 'age2', val: ageV, dom: MEANS, ylab: 'deviation from grand mean',
+      ann: (y, g) => catLabels(g.cc, ['older', 'younger']) + pointers(y, g.cc, AE) + note(['−1.55 + 1.55 = 0']),
+      cap: 'Subtract the grand mean. The age effects are −1.55 and +1.55. They sum to 0 because the grand mean is the balance point of the group means: one group sits exactly as far below it as the other sits above it. Once you know one effect, the other is fixed, so df = 2 − 1 = 1.' },
+    { name: '4. One bar per person', L: 'pAge', val: ageV, dom: MEANS, ylab: 'deviation from grand mean',
+      ann: (y, g) => catLabels(g.cc, ['older (50 people)', 'younger (50 people)']) + note(['100 bars, but only 2 values: −1.55 and +1.55', 'still 1 free value → df = 1']),
+      cap: 'Give every participant their group’s effect: 50 bars at −1.55 and 50 at +1.55. This is the “replace each score with its group mean” step. There are now 100 bars, but still only 2 different values, and they still sum to 0, so df is still 1.' },
+    { name: '5. Square', L: 'pAge', val: sq(ageV), dom: [0, 3.2], ylab: 'squared deviation',
+      ann: (y, g) => catLabels(g.cc, ['older (50 people)', 'younger (50 people)']) + g.cc.map((x, i) => T(x, y(AE[i] ** 2) - 10, `(${sg(AE[i])})² = ${(AE[i] ** 2).toFixed(2)}`, { fw: 500 })).join(''),
+      cap: 'Square every bar. (−1.55)² and (+1.55)² are both 2.40, so all 100 bars are now positive and the same height.' },
+    { name: '6. Sum → SS', L: 'stack', order: ORD_AGE, val: sq(ageV), dom: [0, 280], ylab: 'sum of squares', hl: ['ss'],
+      ann: (y, g) => T(COLX + COLW / 2, y(g.total) - 10, 'SS.age = ' + g.total.toFixed(2), { fw: 500 }) + T(COLX + COLW / 2, PB + 24, 'all 100 participants', { fill: '#5F5E5A' }) +
+        T(COLX + COLW + 40, PT + 60, 'SS.age = 50 × 2.40 + 50 × 2.40', { a: 'start' }) + T(COLX + COLW + 40, PT + 82, '= n × Σ(effect²) = 240.25', { a: 'start' }),
+      cap: 'Add up all 100 squared deviations: SS.age = 240.25. Because each bar is a copy of its group’s effect, this is the same as n × Σ(effect²) = 50 × 2.40 + 50 × 2.40. Duplicating each mean n times is what does the “multiply by n” step.' },
+    { name: '7. ÷ df → MS', L: 'stack', order: ORD_AGE, val: p => sq(ageV)(p) / 1, dom: [0, 280], ylab: 'sum of squares / mean square', hl: ['ms', 'f'],
+      ann: y => msAnn(y, SSf(ageV), 1, 'age'),
+      cap: 'Divide by df to get MS. With df = 1 the bar doesn’t change: MS.age = 240.25 / 1 = 240.25. The small gray bar is MS.error (8.03), the variability we’d expect from individual differences within groups. F = MS.age / MS.error = 240.25 / 8.03 = 29.94.' },
+   ] },
+ { title: 'Demo 2: the main effect of condition', row: 'cond',
+   sub: 'Collapse across age, subtract the grand mean, then build SS and MS for condition.',
+   steps: [
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c], 'The full ANOVA table. This demo builds the highlighted row, the main effect of condition, starting from the 10 cell means below (n = 10 per cell).'), { name: '1. ANOVA table' }),
+    { name: '2. Collapse across age', L: 'cond5', val: p => CM[P[p].c], dom: MEANS, ylab: 'recall',
+      ann: (y, g) => catLabels(g.cc, CN) + gmLine(y) + g.cc.map((x, i) => T(x, y(CM[i]) - 8, CM[i].toFixed(2), { fw: 500 })).join(''),
+      cap: 'Collapse across age: average older and younger within each condition (20 people per bar). Each bar is now half older, half younger. The dashed line is the grand mean, 11.61.' },
+    { name: '3. − grand mean', L: 'cond5', val: condV, dom: MEANS, ylab: 'deviation from grand mean',
+      ann: (y, g) => catLabels(g.cc, CN) + pointers(y, g.cc, CE) + note(['−4.86 − 4.36 + 1.29 + 3.89 + 4.04 = 0']),
+      cap: 'Subtract the grand mean. The five condition effects are −4.86, −4.36, +1.29, +3.89 and +4.04. They sum to 0: the distances below the grand mean exactly balance the distances above it. Once you know any four, the fifth is fixed, so df = 5 − 1 = 4.' },
+    { name: '4. One bar per person', L: 'pCond', val: condV, dom: MEANS, ylab: 'deviation from grand mean',
+      ann: (y, g) => catLabels(g.cc, CN) + note(['100 bars, but only 5 values', 'still 4 free values → df = 4']),
+      cap: 'Give every participant their condition’s effect: 20 bars per condition, 100 in all. There are still only 5 different values, and they still sum to 0, so df is still 4.' },
+    { name: '5. Square', L: 'pCond', val: sq(condV), dom: [0, 28], ylab: 'squared deviation',
+      ann: (y, g) => catLabels(g.cc, CN) + g.cc.map((x, i) => T(x, y(CE[i] ** 2) - 10, (CE[i] ** 2).toFixed(2), { fw: 500 })).join(''),
+      cap: 'Square every bar. The four large effects get much larger. The small adjective effect (1.29² = 1.66) stays small.' },
+    { name: '6. Sum → SS', L: 'stack', order: ORD_COND, val: sq(condV), dom: [0, 1750], ylab: 'sum of squares', hl: ['ss'],
+      ann: (y, g) => T(COLX + COLW / 2, y(g.total) - 10, 'SS.condition = ' + g.total.toFixed(2), { fw: 500 }) + T(COLX + COLW / 2, PB + 24, 'all 100 participants', { fill: '#5F5E5A' }) +
+        T(COLX + COLW + 40, PT + 60, 'SS.condition = n × Σ(effect²)', { a: 'start' }) + T(COLX + COLW + 40, PT + 82, 'with n = 20 per condition', { a: 'start' }),
+      cap: 'Add up all 100 squared deviations: SS.condition = 1514.94. This equals n × Σ(effect²), with n = 20 per condition.' },
+    { name: '7. ÷ df → MS', L: 'stack', order: ORD_COND, val: p => sq(condV)(p) / 4, dom: [0, 1750], ylab: 'sum of squares / mean square', hl: ['ms', 'f'],
+      ann: y => msAnn(y, SSf(condV), 4, 'condition'),
+      cap: 'Divide by df = 4: the column shrinks to a quarter of its height. MS.condition = 1514.94 / 4 = 378.74. The dashed outline shows SS. The small gray bar is MS.error (8.03). F = 378.74 / 8.03 = 47.19.' },
+   ] },
+ { title: 'Demo 3: the interaction', row: 'int',
+   sub: 'Subtract the grand mean, the age effect and the condition effect from every cell, then build SS and MS from what is left.',
+   steps: [
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c], 'The full ANOVA table. This demo builds the highlighted row, the age × condition interaction, starting from the 10 cell means below (n = 10 per cell).'), { name: '1. ANOVA table' }),
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c] - GM, 'Subtract the grand mean (11.61) from every cell mean.'), { name: '2. − grand mean', ylab: 'deviation from grand mean' }),
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c] - AM[P[p].a], 'Subtract the age effect (older −1.55, younger +1.55) from every cell. What’s left in each condition is the condition effect plus the interaction.'), { name: '3. − age effect', ylab: 'deviation from grand mean' }),
+    Object.assign(cellsStep(intV, 'Subtract the condition effects (−4.86, −4.36, +1.29, +3.89, +4.04). What’s left is the interaction. In every condition, older and younger are equal and opposite, so each pair sums to 0. Each age’s five values also sum to 0. Once 4 of the older values are known, the other 6 are fixed: df = (2 − 1)(5 − 1) = 4.',
+      (y, g) => note(['older + younger = 0 in every condition', 'each age’s 5 values sum to 0 → df = 4']) +
+        g.gc.map((x, i) => { const a = i % 2, c = (i - a) / 2, v = IE(a, c); return T(x, y(v) + (v < 0 ? 16 : -6), sg(v), { fs: 12, fill: '#A32D2D', fw: 500 }); }).join('')),
+      { name: '4. − condition effect', ylab: 'interaction effect' }),
+    { name: '5. One bar per person', L: 'pInt', val: intV, dom: MEANS, ylab: 'interaction effect',
+      ann: (y, g) => catLabels(g.cc, CN) + note(['100 bars, but still only 4 free values → df = 4']),
+      cap: 'Give every participant their cell’s interaction effect: 10 bars per cell, 100 in all. There are still only 4 free values, so df is still 4.' },
+    { name: '6. Square', L: 'pInt', val: sq(intV), dom: [0, 5.5], ylab: 'squared deviation',
+      ann: (y, g) => catLabels(g.cc, CN),
+      cap: 'Square every bar. All 100 are now positive.' },
+    { name: '7. Sum → SS', L: 'stack', order: ORD_COND, val: sq(intV), dom: [0, 220], ylab: 'sum of squares', hl: ['ss'],
+      ann: (y, g) => T(COLX + COLW / 2, y(g.total) - 10, 'SS.interaction = ' + g.total.toFixed(2), { fw: 500 }) + T(COLX + COLW / 2, PB + 24, 'all 100 participants', { fill: '#5F5E5A' }) +
+        T(COLX + COLW + 40, PT + 60, 'SS.interaction = n × Σ(effect²)', { a: 'start' }) + T(COLX + COLW + 40, PT + 82, 'with n = 10 per cell', { a: 'start' }),
+      cap: 'Add up all 100 squared deviations: SS.interaction = 190.30, which equals n × Σ(effect²) with n = 10 per cell.' },
+    { name: '8. ÷ df → MS', L: 'stack', order: ORD_COND, val: p => sq(intV)(p) / 4, dom: [0, 220], ylab: 'sum of squares / mean square', hl: ['ms', 'f'],
+      ann: y => msAnn(y, SSf(intV), 4, 'interaction'),
+      cap: 'Divide by df = 4: MS.interaction = 190.30 / 4 = 47.58. The dashed outline shows SS. The small gray bar is MS.error (8.03). F = 47.58 / 8.03 = 5.93.' },
+   ] },
+ { title: 'Demo 4: error (within-cell variability)', row: 'err',
+   sub: 'Use every participant’s actual score, subtract their own cell mean, then build SS and MS for error.',
+   steps: [
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c], 'The full ANOVA table. This demo builds the highlighted row, error, starting from the 10 cell means below. Unlike the effects, error needs each person’s actual score.'), { name: '1. ANOVA table' }),
+    { name: '2. Actual scores', L: 'pInt', val: S, dom: MEANS, ylab: 'recall',
+      ann: (y, g) => catLabels(g.cc, CN) + cellMeanLines(y, g),
+      cap: 'Here are all 100 actual recall scores, 10 per cell (sorted within each cell). The short red lines are the cell means. Error is how far people sit from their own cell mean: the variability that age, condition and their interaction can’t explain.' },
+    { name: '3. − cell mean', L: 'pInt', val: errV, dom: MEANS, ylab: 'deviation from cell mean',
+      ann: (y, g) => catLabels(g.cc, CN) + note(['within each cell, the 10 deviations sum to 0', '9 free values × 10 cells → df = 90']),
+      cap: 'Subtract each person’s cell mean from their score. Within each cell, the 10 deviations sum to 0, so only 9 are free. 10 cells × 9 = 90 df.' },
+    { name: '4. Square', L: 'pInt', val: sq(errV), dom: [0, 100], ylab: 'squared deviation',
+      ann: (y, g) => catLabels(g.cc, CN),
+      cap: 'Square every deviation. People far from their cell mean contribute the most: the older participant who recalled 23 words in the imagery condition sits 9.6 above their cell mean, so their bar is 9.6² = 92.16.' },
+    { name: '5. Sum → SS', L: 'stack', order: ORD_COND, val: sq(errV), dom: [0, 820], ylab: 'sum of squares', hl: ['ss'],
+      ann: (y, g) => stackLab(y, g, 'SS.error', ['SS.error = Σ(score − cell mean)²', 'every person contributes their own value']),
+      cap: 'Add up all 100 squared deviations: SS.error = 722.30. Unlike the effects, none of these bars are copies of each other: each person contributes their own deviation.' },
+    { name: '6. ÷ df → MS', L: 'stack', order: ORD_COND, val: p => sq(errV)(p) / 90, dom: [0, 820], ylab: 'sum of squares / mean square', hl: ['ms'],
+      ann: (y, g) => `<rect x="${COLX}" y="${y(722.30)}" width="${COLW}" height="${y(0) - y(722.30)}" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-dasharray="5 4"/>` +
+        T(COLX + COLW / 2, y(722.30) - 8, 'SS = 722.30', { fill: '#5F5E5A' }) + T(COLX + COLW / 2, y(MSE) - 8, 'MS.error = 8.03', { fw: 500 }) +
+        T(COLX - 14, y(60), '÷ 90 →', { a: 'end', fw: 500 }) + T(COLX + COLW / 2, PB + 32, 'all 100 participants', { fill: '#5F5E5A' }) +
+        T(COLX + COLW + 40, PT + 60, 'MS.error = 722.30 / 90 = 8.03', { a: 'start', fw: 500 }) +
+        T(COLX + COLW + 40, PT + 82, 'the denominator of every F in the table', { a: 'start', fill: '#5F5E5A' }),
+      cap: 'Divide by df = 90: MS.error = 722.30 / 90 = 8.03. This is the small gray bar from the other demos: the variability we’d expect from individual differences alone, which every effect’s MS is compared against.' },
+   ] },
+ { title: 'Demo 5: total variability', row: 'tot',
+   sub: 'Use every participant’s actual score, subtract the grand mean, then see how SS.total splits into the rows above it.',
+   steps: [
+    Object.assign(cellsStep(p => M[P[p].a][P[p].c], 'The full ANOVA table. This demo builds the highlighted row, total, starting from the 10 cell means below.'), { name: '1. ANOVA table' }),
+    { name: '2. Actual scores', L: 'pInt', val: S, dom: MEANS, ylab: 'recall',
+      ann: (y, g) => catLabels(g.cc, CN) + gmLine(y),
+      cap: 'All 100 actual scores again (sorted within each cell). The dashed line is the grand mean, 11.61. Total variability is how far each person sits from the grand mean, ignoring which group they’re in.' },
+    { name: '3. − grand mean', L: 'pInt', val: totV, dom: MEANS, ylab: 'deviation from grand mean',
+      ann: (y, g) => catLabels(g.cc, CN) + note(['all 100 deviations sum to 0', '99 free values → df = N − 1 = 99']),
+      cap: 'Subtract the grand mean from every score. All 100 deviations sum to 0, so 99 are free: df = N − 1 = 99.' },
+    { name: '4. Square', L: 'pInt', val: sq(totV), dom: [0, 140], ylab: 'squared deviation',
+      ann: (y, g) => catLabels(g.cc, CN),
+      cap: 'Square every deviation.' },
+    { name: '5. Sum → SS', L: 'stack', order: ORD_COND, val: sq(totV), dom: [0, 3000], ylab: 'sum of squares', hl: ['ss'],
+      ann: (y, g) => stackLab(y, g, 'SS.total', ['SS.total = Σ(score − grand mean)²']),
+      cap: 'Add up all 100 squared deviations: SS.total = 2667.79.' },
+    { name: '6. Split SS.total', L: 'stack', order: ORD_COND, val: sq(totV), dom: [0, 3000], ylab: 'sum of squares', hlAll: ['ss'],
+      ann: y => partition(y),
+      cap: 'SS.total splits exactly into the four rows above it: 240.25 + 1514.94 + 190.30 + 722.30 = 2667.79. The df split the same way: 1 + 4 + 4 + 90 = 99. Each person’s deviation from the grand mean is the sum of their age effect, condition effect, interaction effect and error.' },
+   ] },
+];
+
+// ---------- rendering ----------
+const svgNS = 'http://www.w3.org/2000/svg';
+const barsG = document.getElementById('bars'), axisG = document.getElementById('axis'), annG = document.getElementById('ann');
+const rects = P.map((p, i) => { const r = document.createElementNS(svgNS, 'rect'); r.setAttribute('fill', FILL[p.a]); barsG.appendChild(r); return r; });
+const cur = { x: new Float64Array(100), w: new Float64Array(100), b: new Float64Array(100), v: new Float64Array(100), d: [-8, 20] };
+
+const ymap = d => v => PT + (d[1] - v) / (d[1] - d[0]) * PH;
+function niceStep(range) { const r = range / 6, m = Math.pow(10, Math.floor(Math.log10(r))), n = r / m; return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * m; }
+
+function draw() {
+  const y = ymap(cur.d);
+  for (let i = 0; i < 100; i++) {
+    const a = y(cur.b[i]), b = y(cur.b[i] + cur.v[i]);
+    rects[i].setAttribute('x', cur.x[i]); rects[i].setAttribute('width', Math.max(0, cur.w[i]));
+    rects[i].setAttribute('y', Math.min(a, b)); rects[i].setAttribute('height', Math.abs(a - b));
+  }
+  const st = niceStep(cur.d[1] - cur.d[0]); let h = '';
+  for (let t = Math.ceil(cur.d[0] / st) * st; t <= cur.d[1] + 1e-9; t += st) {
+    const yy = y(t), zero = Math.abs(t) < 1e-9;
+    h += `<line x1="${PL}" x2="${W - PR}" y1="${yy}" y2="${yy}" stroke="${zero ? '#5F5E5A' : '#E6E4DD'}" stroke-width="${zero ? 1.5 : 1}"/>`;
+    h += `<text x="${PL - 8}" y="${yy + 4}" text-anchor="end" font-size="12" fill="#5F5E5A">${+t.toFixed(4)}</text>`;
+  }
+  axisG.innerHTML = h;
+}
+
+function target(step) {
+  const vals = P.map((_, p) => step.val(p));
+  let g;
+  if (step.L === 'stack') g = stack(step.order, vals); else g = L[step.L]();
+  return { vals, g };
+}
+
+let anim = null;
+function animateTo(step) {
+  const { vals, g } = target(step);
+  const from = { x: cur.x.slice(), w: cur.w.slice(), b: cur.b.slice(), v: cur.v.slice(), d: cur.d.slice() };
+  const to = { x: g.pos.map(q => q.x), w: g.pos.map(q => q.w), b: g.pos.map(q => q.b), v: vals, d: step.dom };
+  annG.style.opacity = 0;
+  if (anim) cancelAnimationFrame(anim);
+  const t0 = performance.now(), dur = 900;
+  const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const tick = now => {
+    const t = Math.min(1, (now - t0) / dur), e = ease(t);
+    for (let i = 0; i < 100; i++) {
+      cur.x[i] = from.x[i] + (to.x[i] - from.x[i]) * e;
+      cur.w[i] = from.w[i] + (to.w[i] - from.w[i]) * e;
+      cur.b[i] = from.b[i] + (to.b[i] - from.b[i]) * e;
+      cur.v[i] = from.v[i] + (to.v[i] - from.v[i]) * e;
+    }
+    cur.d = [from.d[0] + (to.d[0] - from.d[0]) * e, from.d[1] + (to.d[1] - from.d[1]) * e];
+    draw();
+    if (t < 1) anim = requestAnimationFrame(tick);
+    else { anim = null; annG.innerHTML = step.ann(ymap(step.dom), g); annG.style.opacity = 1; }
+  };
+  anim = requestAnimationFrame(tick);
+}
+
+// ---------- controls ----------
+let cur_d = 0, si = 0;
+function go(i) {
+  const demo = D[cur_d], step = demo.steps[i];
+  si = i;
+  document.getElementById('cap').textContent = step.cap;
+  document.getElementById('ylab').textContent = step.ylab;
+  document.querySelectorAll('#tbl tr').forEach(tr => tr.classList.toggle('hl', tr.dataset.row === demo.row));
+  document.querySelectorAll('#tbl td').forEach(td => td.classList.toggle('cellhl',
+    (td.parentElement.dataset.row === demo.row && (step.hl || []).includes(td.dataset.col)) || (step.hlAll || []).includes(td.dataset.col)));
+  demo.steps.forEach((_, k) => document.getElementById('b' + k).classList.toggle('on', k === i));
+  animateTo(step);
+}
+function pick(d, step) {
+  cur_d = d;
+  document.getElementById('title').textContent = D[d].title;
+  document.getElementById('sub').textContent = D[d].sub;
+  document.getElementById('steps').innerHTML = D[d].steps.map((s, k) => `<button id="b${k}" onclick="go(${k})">${s.name}</button>`).join('');
+  D.forEach((_, k) => document.getElementById('t' + k).classList.toggle('on', k === d));
+  go(step);
+}
+document.getElementById('tabs').innerHTML = ['Demo 1: Age', 'Demo 2: Condition', 'Demo 3: Interaction', 'Demo 4: Error', 'Demo 5: Total']
+  .map((n, k) => `<button id="t${k}" onclick="pick(${k}, 0)">${n}</button>`).join('');
+document.addEventListener('keydown', e => {
+  const n = D[cur_d].steps.length;
+  if (e.key === 'ArrowRight') { if (si < n - 1) go(si + 1); else if (cur_d < D.length - 1) pick(cur_d + 1, 0); }
+  else if (e.key === 'ArrowLeft') { if (si > 0) go(si - 1); else if (cur_d > 0) pick(cur_d - 1, D[cur_d - 1].steps.length - 1); }
+});
+
+// start: place bars at the cell-means layout with no animation
+(function init() {
+  const { vals, g } = target(D[0].steps[0]);
+  g.pos.forEach((q, i) => { cur.x[i] = q.x; cur.w[i] = q.w; cur.b[i] = 0; cur.v[i] = 0; });
+  draw();
+  pick(0, 0);
+})();
+</script>
+</body>
+</html>
